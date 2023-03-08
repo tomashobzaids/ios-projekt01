@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 ###########################
 ### global declarations ###
@@ -10,6 +10,7 @@ group=''
 m=false
 is_file=false
 is_directory=false
+path=''
 
 usage() {
   echo 'USAGE'
@@ -29,6 +30,15 @@ usage() {
   # echo "         list    Lists files in directory that have been edited using this program."
 }
 
+###########################
+### handling .mole file ###
+###########################
+
+# create /.mole folder if it doesn't exist
+if [ ! -d "$HOME/.mole/" ]; then
+  mkdir -p "$HOME/.mole/"
+fi
+
 ############################
 ### parsing MOLE_RC file ###
 ############################
@@ -36,7 +46,7 @@ usage() {
 # parses the MOLE_RC file
 parseRCfile() {
   # MOLE_RC variable not set -> error and end
-  if [[ -z "$MOLE_RC" ]]; then
+  if [ -z "$MOLE_RC" ]; then
     echo "MOLE_RC variable not set."
     exit 1
   fi
@@ -47,17 +57,18 @@ parseRCfile() {
     # the file was created empty, so no need to parse now
     return
   fi
-
-  # shellcheck source=/dev/null #
-  . "$MOLE_RC"
-
-  if [[ ! -z $EDITOR ]]; then
-    editor=$EDITOR
-  elif [[ ! -z $VISUAL ]]; then
-    editor=$VISUAL
-  fi
 }
 parseRCfile
+
+###############################
+### parsing editor variable ###
+###############################
+
+if [ -n "$EDITOR" ]; then
+  editor=$EDITOR
+elif [ -n "$VISUAL" ]; then
+  editor=$VISUAL
+fi
 
 #########################
 ### parsing arguments ###
@@ -76,13 +87,13 @@ if [ "$1" == "-h" ]; then
 fi
 
 # list option option was provided (must always be the first)
-if [ "$1" == "list" ]; then
+if [ "$1" = "list" ]; then
   command=$1
   shift
 fi
 
 # secret-log option was provided (must always be the first)
-if [ "$1" == "secret-log" ]; then
+if [ "$1" = "secret-log" ]; then
   command=$1
   shift
 fi
@@ -119,15 +130,23 @@ done
 shift $((OPTIND - 1))
 
 # no unparsed arguments were left -> no file/dir was provided
-if [[ ${*: -1} == "" ]]; then
+if [ "$*" = "" ]; then
   echo "error: An input file/directory must be provided."
   echo
   usage
   exit 1
 fi
 
+# only argument left should be the file/directory
+if [ $# -ne 1 ]; then
+  echo "Too many arguments!"
+  echo
+  usage
+  exit 1
+fi
+
 # check whether input was a file or a directory
-if [[ -f ${*: -1} ]]; then
+if [ -f "$*" ]; then
   # -m is not allowed with FILE parameter
   if $m; then
     echo "Illegal option '-m' for opening FILE."
@@ -138,27 +157,43 @@ if [[ -f ${*: -1} ]]; then
 
   # input is file
   is_file=true
-elif [[ -d ${*: -1} ]]; then
+  path="$*"
+elif [ -d "$*" ]; then
   # input is directory
   is_directory=true
+  path="$*"
 else
   # input file/dir is non-existant
-  echo "'${*: -1}' is not a file nor a directory."
+  echo "'$*' is not a file nor a directory."
   echo
   usage
   exit 1
 fi
 
-echo "command      - '$command'"
-echo "group        - '$group'"
-echo "m            - '$m'"
-echo "is_file      - '$is_file'"
-echo "is_directory - '$is_directory'"
+############################
+### saving the open data ###
+############################
 
-if [ $command = "secret-log" ]; then
-  # create /.mole folder if it doesn't exist
-  if [ ! -d "$HOME/.mole/" ]; then
-    mkdir -p "$HOME/.mole/"
+realpath="$(realpath "$path")"
+line=""
+while read -r current_line; do
+  if echo "$current_line" | grep -q "^$realpath"; then
+    line="$current_line"
+    break
   fi
+done <"$MOLE_RC"
 
+if [ -z "$line" ]; then
+  # append new line record
+
+  echo "$realpath;$(date "+%Y-%m-%d_%H-%M-%S")_1" >>"$MOLE_RC"
+else
+  # calculate new record index
+  # line=$(sed -n "/$realpath/p" "$MOLE_RC")
+  stripped=$(echo "$line" | tr -cd ';')
+  num=$(echo "$stripped" | wc -m)
+  num=$(($num))
+
+  # TODO: change this to sed
+  gsed -i "/^[$realpath]/ s/$/;$(date "+%Y-%m-%d_%H-%M-%S")_$num/" mole.file
 fi
