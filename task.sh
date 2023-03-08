@@ -175,25 +175,18 @@ fi
 ############################
 
 realpath="$(realpath "$path")"
-line=""
-while read -r current_line; do
-  if echo "$current_line" | grep -q "^$realpath"; then
-    line="$current_line"
-    break
-  fi
-done <"$MOLE_RC"
 
-if [ -z "$line" ]; then
+if [ -z "$(gsed -n "\;$realpath;p" "$MOLE_RC")" ]; then
   # append new line record
 
   echo "$realpath;$(date "+%Y-%m-%d_%H-%M-%S")_1" >>"$MOLE_RC"
 else
   # calculate new record index
-  # line=$(sed -n "/$realpath/p" "$MOLE_RC")
+  line=$(gsed -n "\;$realpath;p" "$MOLE_RC")
   stripped=$(echo "$line" | tr -cd ';')
   num=$(echo "$stripped" | wc -m)
   num=$(($num))
 
   # TODO: change this to sed
-  gsed -i "/^[$realpath]/ s/$/;$(date "+%Y-%m-%d_%H-%M-%S")_$num/" mole.file
+  gsed -i "\;^$realpath; s/$/;$(date "+%Y-%m-%d_%H-%M-%S")_$num/" mole.file
 fi
