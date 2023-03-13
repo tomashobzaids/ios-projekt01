@@ -43,8 +43,8 @@ fi
 ### parsing MOLE_RC file ###
 ############################
 
-# parses the MOLE_RC file
-parseRCfile() {
+# checks the MOLE_RC file
+changeRCfile() {
   # MOLE_RC variable not set -> error and end
   if [ -z "$MOLE_RC" ]; then
     echo "MOLE_RC variable not set."
@@ -58,7 +58,7 @@ parseRCfile() {
     return
   fi
 }
-parseRCfile
+changeRCfile
 
 ###############################
 ### parsing editor variable ###
@@ -176,17 +176,26 @@ fi
 
 realpath="$(realpath "$path")"
 
-if [ -z "$(gsed -n "\;$realpath;p" "$MOLE_RC")" ]; then
-  # append new line record
+if $is_file; then
+  groupSuffix=''
+  if [ -n "$group" ]; then
+    groupSuffix=":$group"
+    echo $groupSuffix
+  fi
+  if [ -z "$(gsed -n "\;$realpath;p" "$MOLE_RC")" ]; then
+    # append new line record
+    echo "$realpath$groupSuffix;$(date "+%Y-%m-%d_%H-%M-%S")_1" >>"$MOLE_RC"
+  else
+    # calculate new record index
+    line=$(gsed -n "\;$realpath;p" "$MOLE_RC")
+    stripped=$(echo "$line" | tr -cd ';')
+    num=$(echo "$stripped" | wc -m)
+    num=$(($num))
 
-  echo "$realpath;$(date "+%Y-%m-%d_%H-%M-%S")_1" >>"$MOLE_RC"
-else
-  # calculate new record index
-  line=$(gsed -n "\;$realpath;p" "$MOLE_RC")
-  stripped=$(echo "$line" | tr -cd ';')
-  num=$(echo "$stripped" | wc -m)
-  num=$(($num))
+    sed -i "s;$realpath;$realpath:$groupSuffix;g" "$MOLE_RC"
 
-  # TODO: change this to sed
-  gsed -i "\;^$realpath; s/$/;$(date "+%Y-%m-%d_%H-%M-%S")_$num/" mole.file
+    # append to an existing record
+    # TODO: change gsed to sed
+    gsed -i "\;^$realpath; s/$/;$(date "+%Y-%m-%d_%H-%M-%S")_$num/" "$MOLE_RC"
+  fi
 fi
