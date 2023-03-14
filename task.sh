@@ -195,7 +195,13 @@ if [ "$command" = "list" ]; then
 
   # for option -g
   if [ -n "$group" ]; then
-    args=$args' && $4 == group'
+    args=$args' && '
+    IFS=','
+    # for every group add to clause
+    for grp in $group; do
+      args=$args'$4 == "'$grp'" || '
+    done
+    args="${args%????}"
   fi
 
   # add print command to arguments for awk
@@ -204,8 +210,16 @@ if [ "$command" = "list" ]; then
   # find all unique paths to files based on set conditions
   files="$(awk -v path="$path" -v after="$a" -v before="$b" -v group="$group" -F ';' "$args" "$MOLE_RC" | sort | uniq)"
 
+  # if no files were found show error message and exit with error
+  if [ -z "$files" ]; then
+    echo "No file has ever been opened in '$(realpath "$path")' with set parameters."
+    exit 1
+  fi
+
   # find the longest filepath
   indent=0
+  IFS='
+  '
   for line in $files; do
     len=${#line}
     if [ "$len" -gt "$indent" ]; then
