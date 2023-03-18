@@ -232,7 +232,7 @@ if [ "$command" = "list" ]; then
     local_indent=$((indent - ${#line} + 1))
     groups="$(awk -v path="$line" -F ';' '$1 ~ path && $4 {print $4}' "$MOLE_RC" | uniq | sort | tr '\n' ', ')"
     realpath="$(realpath "$path")/"
-    just_file=$(echo "$line" | gsed "s;$realpath;;g")
+    just_file=$(echo "$line" | sed "s;$realpath;;g")
     printf "%s:%${local_indent}s%s\n" "$just_file" "" "${groups%?}"
   done
   exit
