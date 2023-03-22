@@ -132,7 +132,7 @@ done
 shift $((OPTIND - 1))
 
 # only argument left should be the file/directory
-if [ $# -gt 1 ]; then
+if [ $# -gt 1 ] && [ "$command" != "secret-log" ]; then
   echo "Too many arguments!"
   echo
   usage
@@ -164,7 +164,7 @@ elif [ -d "$input" ]; then
   path="$input"
 else
   # non-existant input
-  if [ "${input#${input%?}}" = '/' ]; then
+  if [ "${input#${input%?}}" = '/' ] && [ "$command" != "secret-log" ]; then
     # input dir is non-existant
     echo "'$input' is not a directory."
     exit 1
@@ -173,6 +173,106 @@ else
     is_file=true
     path="$input"
   fi
+fi
+
+##################
+### secret-log ###
+##################
+
+if [ "$command" = "secret-log" ]; then
+  if [ -n "$group" ]; then
+    echo "The '-g' argument is not allowed for secret-log."
+    exit 1
+  fi
+
+  args='$1 ~ ""'
+
+  # for option -a
+  if [ -n "$a" ]; then
+    args=$args' && $2 > after'
+  fi
+
+  # for option -b
+  if [ -n "$b" ]; then
+    args=$args' && $2 < before'
+  fi
+
+  # path filters
+  if [ -n "$input" ]; then
+    path_args=""
+    IFS=' '
+    for dir in $input; do
+      path_args=$path_args'$1 ~ "'$dir'" || '
+    done
+    path_args="${path_args%????}"
+    args=$args" && $path_args"
+  fi
+
+  # add print command to arguments for awk
+  args=$args' {print $1}'
+
+  # find all unique paths to files based on set conditions
+  files="$(awk -v after="$a" -v before="$b" -v group="$group" -F ';' "$args" "$MOLE_RC" | sort | uniq)"
+
+  # if no files were found show error message and exit with error
+  if [ -z "$files" ]; then
+    echo "No file has ever been opened with set parameters."
+    exit 1
+  fi
+
+  # find the longest filepath
+  indent=0
+  IFS='
+  '
+  for line in $files; do
+    len=${#line}
+    if [ "$len" -gt "$indent" ]; then
+      indent="$len"
+    fi
+  done
+
+  date_args='$1 ~ path'
+  # for option -a
+  if [ -n "$a" ]; then
+    date_args=$date_args' && $2 > after'
+  fi
+
+  # for option -b
+  if [ -n "$b" ]; then
+    date_args=$date_args' && $2 < before'
+  fi
+
+  # arguments for awk for reading arguments
+  date_args=$date_args' {print $2"_"$3}'
+
+  slog=""
+
+  # write out every filepath with it's groups
+  # echo "$files" | while IFS= read -r line; do
+  IFS="
+  "
+  for line in $files; do
+    dates="$(awk -v path="$line" -v before="$b" -v after="$a" -F ';' "$date_args" "$MOLE_RC" | uniq | sort | tr '\n' ',')"
+
+    dates_format="" # formatted dates string
+    counter=1       # the N after every DATETIME_
+    IFS=","
+    # format dates with Ns
+    for datetime in $dates; do
+      dates_format=$dates_format';'$datetime'_'$counter
+      counter=$((counter + 1))
+    done
+
+    # write the formatted secret log into a string
+    if [ -n "$dates_format" ]; then
+      slog=$slog$line$dates_format'\n'
+    fi
+  done
+
+  mkdir -p "$HOME/.mole"
+  file=$HOME'/.mole/log_'$USER"_$(date "+%Y-%m-%d_%H-%M-%S").bz2"
+  echo "$slog" | bzip2 -z -c >"$file"
+  exit
 fi
 
 ###############
@@ -231,6 +331,9 @@ if [ "$command" = "list" ]; then
   echo "$files" | while IFS= read -r line; do
     local_indent=$((indent - ${#line} + 1))
     groups="$(awk -v path="$line" -F ';' '$1 ~ path && $4 {print $4}' "$MOLE_RC" | uniq | sort | tr '\n' ', ')"
+    if [ -z "$groups" ]; then
+      groups="- "
+    fi
     realpath="$(realpath "$path")/"
     just_file=$(echo "$line" | sed "s;$realpath;;g")
     printf "%s:%${local_indent}s%s\n" "$just_file" "" "${groups%?}"
@@ -289,6 +392,7 @@ fi
 ### opening editor ###
 ######################
 
+mkdir -p "$(dirname "$path")"
 $editor "$path"
 # mkdir -p "$(dirname "$path")" && touch "$path"
 
