@@ -281,7 +281,7 @@ fi
 
 if [ "$command" = "list" ]; then
   # default arguments
-  args='$1 ~ path'
+  args='$1 ~ ("^"path"/[^/]+$"s)'
 
   # for option -a
   if [ -n "$a" ]; then
@@ -347,7 +347,7 @@ fi
 
 if $is_directory; then
   # default arguments
-  args='$1 ~ path'
+  args='$1 ~ ("^"path"/[^/]+$"s)'
 
   # for option -a
   if [ -n "$a" ]; then
